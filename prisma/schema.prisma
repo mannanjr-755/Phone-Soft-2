@@ -1,0 +1,377 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  ACCOUNTANT
+  YARD_MANAGER
+  OPERATOR
+  PARTNER
+}
+
+enum MachineStatus {
+  ACTIVE
+  IDLE
+  MAINTENANCE
+  PARTNERSHIP
+  RETIRED
+  SOLD
+}
+
+enum ExpenseCategory {
+  ALL_PRODUCTS
+  SMARTPHONES
+  EARBUDS_HEADPHONES
+  SMARTWATCHES
+  CHARGERS_POWER_BANKS
+  CABLES_ADAPTERS
+  CASES_PROTECTORS
+  MEMORY_USB_DRIVES
+  SPARE_PARTS
+  OTHER_ACCESSORIES
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+
+enum NotificationType {
+  MAINTENANCE_DUE
+  INSURANCE_EXPIRY
+  REGISTRATION_EXPIRY
+  PARTNERSHIP_PAYMENT
+  HIGH_EXPENSE
+  LOW_PROFIT
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  email        String   @unique
+  password     String
+  name         String
+  role         UserRole @default(OPERATOR)
+  avatar       String?
+  active       Boolean  @default(true)
+  tokenVersion Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  notifications Notification[]
+  auditLogs     AuditLog[]
+}
+
+model Machine {
+  id                  String        @id @default(cuid())
+  name                String
+  type                String
+  brand               String
+  model               String
+  serialNumber        String        @unique
+  registrationNumber  String?
+  purchaseDate        DateTime
+  purchaseCost        Decimal       @db.Decimal(14, 2)
+  currentValue        Decimal       @db.Decimal(14, 2)
+  depreciationRate    Decimal       @default(10) @db.Decimal(5, 2)
+  workingHours        Int           @default(0)
+  status              MachineStatus @default(ACTIVE)
+  location            String?
+  imageUrl            String?
+  operatingCosts      Decimal       @default(0) @db.Decimal(14, 2)
+  salesExpenses       Decimal       @default(0) @db.Decimal(14, 2)
+  soldPrice           Decimal?      @db.Decimal(14, 2)
+  soldDate            DateTime?
+  saleProfit          Decimal?      @db.Decimal(14, 2)
+  totalOperatingCosts Decimal?      @db.Decimal(14, 2)
+  profitMargin        Decimal?      @db.Decimal(8, 2)
+  roi                 Decimal?      @db.Decimal(8, 2)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  costs        MachineCost[]
+  revenues     MachineRevenue[]
+  expenses     Expense[]
+  documents    MachineDocument[]
+  partnerships PartnershipMachine[]
+  yardRecords  YardRecord[]
+}
+
+model Sale {
+  id           String   @id @default(cuid())
+  itemName     String
+  purchaseCost Decimal  @db.Decimal(14, 2)
+  machineCost  Decimal  @db.Decimal(14, 2)
+  sellingPrice Decimal  @db.Decimal(14, 2)
+  profit       Decimal  @db.Decimal(14, 2)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model ExpenseCategoryConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  label       String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model MachineDocument {
+  id        String   @id @default(cuid())
+  machineId String
+  name      String
+  url       String
+  type      String
+  createdAt DateTime @default(now())
+  machine   Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+}
+
+model MachineCost {
+  id          String   @id @default(cuid())
+  machineId   String
+  category    String
+  amount      Decimal  @db.Decimal(14, 2)
+  date        DateTime
+  description String?
+  createdAt   DateTime @default(now())
+  machine     Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+}
+
+model MachineRevenue {
+  id          String   @id @default(cuid())
+  machineId   String
+  source      String
+  amount      Decimal  @db.Decimal(14, 2)
+  date        DateTime
+  description String?
+  createdAt   DateTime @default(now())
+  machine     Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+}
+
+model Expense {
+  id          String          @id @default(cuid())
+  category    ExpenseCategory
+  amount      Decimal         @db.Decimal(14, 2)
+  date        DateTime
+  description String
+  machineId   String?
+  yardId      String?
+  createdAt   DateTime        @default(now())
+  machine     Machine?        @relation(fields: [machineId], references: [id])
+}
+
+model Partnership {
+  id              String   @id @default(cuid())
+  name            String
+  machineName     String?
+  agreementDate   DateTime
+  agreementUrl    String?
+  totalInvestment Decimal  @db.Decimal(14, 2)
+  totalRevenue    Decimal  @default(0) @db.Decimal(14, 2)
+  totalExpenses   Decimal  @default(0) @db.Decimal(14, 2)
+  netProfit       Decimal  @default(0) @db.Decimal(14, 2)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  machines PartnershipMachine[]
+  partners Partner[]
+  payments PartnershipPayment[]
+}
+
+model PartnershipMachine {
+  id            String      @id @default(cuid())
+  partnershipId String
+  machineId     String
+  partnership   Partnership @relation(fields: [partnershipId], references: [id], onDelete: Cascade)
+  machine       Machine     @relation(fields: [machineId], references: [id], onDelete: Cascade)
+
+  @@unique([partnershipId, machineId])
+}
+
+model Partner {
+  id                  String      @id @default(cuid())
+  partnershipId       String
+  name                String
+  email               String?
+  ownershipPercentage Decimal     @db.Decimal(5, 2)
+  investmentAmount    Decimal     @db.Decimal(14, 2)
+  expenseShare        Decimal     @default(0) @db.Decimal(14, 2)
+  revenueShare        Decimal     @default(0) @db.Decimal(14, 2)
+  netProfit           Decimal     @default(0) @db.Decimal(14, 2)
+  outstandingPayment  Decimal     @default(0) @db.Decimal(14, 2)
+  partnership         Partnership @relation(fields: [partnershipId], references: [id], onDelete: Cascade)
+}
+
+model PartnershipPayment {
+  id            String      @id @default(cuid())
+  partnershipId String
+  partnerId     String?
+  amount        Decimal     @db.Decimal(14, 2)
+  type          String
+  date          DateTime
+  status        String      @default("PENDING")
+  partnership   Partnership @relation(fields: [partnershipId], references: [id], onDelete: Cascade)
+}
+
+model YardRecord {
+  id        String   @id @default(cuid())
+  machineId String?
+  type      String
+  quantity  Int?
+  notes     String?
+  date      DateTime
+  createdAt DateTime @default(now())
+  machine   Machine? @relation(fields: [machineId], references: [id])
+}
+
+model Transaction {
+  id          String          @id @default(cuid())
+  type        TransactionType
+  amount      Decimal         @db.Decimal(14, 2)
+  date        DateTime
+  description String
+  category    String?
+  accountId   String?
+  createdAt   DateTime        @default(now())
+  account     BankAccount?    @relation(fields: [accountId], references: [id])
+}
+
+model BankAccount {
+  id            String        @id @default(cuid())
+  name          String
+  bankName      String
+  accountNumber String
+  balance       Decimal       @db.Decimal(14, 2)
+  createdAt     DateTime      @default(now())
+  transactions  Transaction[]
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  entity    String
+  entityId  String?
+  details   String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Payable {
+  id        String   @id @default(cuid())
+  vendor    String
+  invoice   String
+  amount    Decimal  @db.Decimal(14, 2)
+  dueDate   DateTime
+  status    String   @default("Pending")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Receivable {
+  id        String   @id @default(cuid())
+  client    String
+  invoice   String
+  amount    Decimal  @db.Decimal(14, 2)
+  dueDate   DateTime
+  status    String   @default("Pending")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MonthlyReportExclusion {
+  id         String   @id @default(cuid())
+  monthKey   String   @unique
+  reportType String   @default("expense_monthly")
+  createdAt  DateTime @default(now())
+}
+
+model Purchase {
+  id        String   @id @default(cuid())
+  name      String
+  qty       Int
+  price     Decimal  @db.Decimal(14, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Product {
+  id        String   @id @default(cuid())
+  name      String
+  stock     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  contact   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CashBankAccount {
+  id        String   @id @default(cuid())
+  name      String
+  balance   Decimal  @db.Decimal(14, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AccountingEntry {
+  id        String   @id @default(cuid())
+  desc      String
+  amount    Decimal  @db.Decimal(14, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CreditRecord {
+  id              String   @id @default(cuid())
+  fromDate        DateTime
+  tillDate        DateTime
+  customerName    String
+  mobileName      String
+  totalAmount     Decimal  @db.Decimal(14, 2)
+  paidAmount      Decimal  @default(0) @db.Decimal(14, 2)
+  remainingAmount Decimal  @db.Decimal(14, 2)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model SyncRecord {
+  id         String   @id @default(cuid())
+  clientOpId String   @unique
+  method     String
+  path       String
+  createdAt  DateTime @default(now())
+}
